@@ -1,7 +1,7 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
-#include <sys/time.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <time.h>
 
@@ -16,13 +16,6 @@
             exit(1);                                               \
         }                                                          \
     }
-
-inline double cpuSecond()
-{
-    struct timeval tp;
-    gettimeofday(&tp, NULL);
-    return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
-}
 
 void initialData(float *ip, int size)
 {
@@ -42,7 +35,16 @@ void sumArraysOnHost(float *A, float *B, float *C, const int N)
     }
 }
 
-__global__ void sumArraysOnGPU(float *A, float *B, float *C, const int N)
+__global__ void sumArrays(float *A, float *B, float *C, const int N)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N)
+    {
+        C[i] = A[i] + B[i];
+    }
+}
+
+__global__ void sumArraysZeroCopy(float *A, float *B, float *C, const int N)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < N)
@@ -57,7 +59,7 @@ void checkResult(float *hostRef, float *gpuRef, const int N)
     bool match = 1;
     for (int i = 0; i < N; i++)
     {
-        if (abs(hostRef[i] - gpuRef[i]) > epsilon)
+        if (fabs(hostRef[i] - gpuRef[i]) > epsilon)
         {
             match = 0;
             printf("Arrays do not match!\n");
@@ -71,68 +73,103 @@ void checkResult(float *hostRef, float *gpuRef, const int N)
 
 int main(int argc, char **argv)
 {
-    printf("%s Starting...\n", argv[0]);
-
     int dev = 0;
-    cudaDeviceProp deviceProp;
-    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
-    printf("Using Device %d: %s\n", dev, deviceProp.name);
+
+    CHECK(cudaSetDeviceFlags(cudaDeviceMapHost));
     CHECK(cudaSetDevice(dev));
 
-    int nElem = 1 << 24;
-    printf("Vector size %d\n", nElem);
+    cudaDeviceProp deviceProp;
+    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
 
+    if (!deviceProp.canMapHostMemory)
+    {
+        printf("Device %d does not support mapping CPU host memory!\n", dev);
+        CHECK(cudaDeviceReset());
+        exit(EXIT_SUCCESS);
+    }
+
+    printf("Using Device %d: %s \n", dev, deviceProp.name);
+
+    int ipower = 10;
+    if (argc > 1)
+        ipower = atoi(argv[1]);
+    int nElem = 1 << ipower;
     size_t nBytes = nElem * sizeof(float);
+
+    if (ipower < 18)
+    {
+        printf("Vector size %d power %d nbytes %3.0f KB\n", nElem, ipower, (float)nBytes / (1024.0f));
+    }
+    else
+    {
+        printf("Vector size %d power %d nbytes %3.0f MB\n", nElem, ipower, (float)nBytes / (1024.0f * 1024.0f));
+    }
+
     float *h_A, *h_B, *hostRef, *gpuRef;
     h_A = (float *)malloc(nBytes);
     h_B = (float *)malloc(nBytes);
     hostRef = (float *)malloc(nBytes);
     gpuRef = (float *)malloc(nBytes);
 
-    double iStart, iElaps;
-
-    iStart = cpuSecond();
     initialData(h_A, nElem);
     initialData(h_B, nElem);
-    iElaps = cpuSecond() - iStart;
-
     memset(hostRef, 0, nBytes);
     memset(gpuRef, 0, nBytes);
 
-    iStart = cpuSecond();
     sumArraysOnHost(h_A, h_B, hostRef, nElem);
-    iElaps = cpuSecond() - iStart;
 
     float *d_A, *d_B, *d_C;
-    cudaMalloc((float **)&d_A, nBytes);
-    cudaMalloc((float **)&d_B, nBytes);
-    cudaMalloc((float **)&d_C, nBytes);
+    CHECK(cudaMalloc((float **)&d_A, nBytes));
+    CHECK(cudaMalloc((float **)&d_B, nBytes));
+    CHECK(cudaMalloc((float **)&d_C, nBytes));
 
-    cudaMemcpy(d_A, h_A, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, nBytes, cudaMemcpyHostToDevice);
+    CHECK(cudaMemcpy(d_A, h_A, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(d_B, h_B, nBytes, cudaMemcpyHostToDevice));
 
-    int iLen = 1024;
+    int iLen = 512;
     dim3 block(iLen);
     dim3 grid((nElem + block.x - 1) / block.x);
 
-    iStart = cpuSecond();
-    sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
-    cudaDeviceSynchronize();
-    iElaps = cpuSecond() - iStart;
-    printf("sumArraysOnGPU <<<%d,%d>>> Time elapsed %fsec\n", grid.x, block.x, iElaps);
+    sumArrays<<<grid, block>>>(d_A, d_B, d_C, nElem);
+    CHECK(cudaDeviceSynchronize());
 
-    cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost);
+    CHECK(cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost));
 
     checkResult(hostRef, gpuRef, nElem);
 
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
-
+    CHECK(cudaFree(d_A));
+    CHECK(cudaFree(d_B));
     free(h_A);
     free(h_B);
+
+    unsigned int flags = cudaHostAllocMapped;
+    CHECK(cudaHostAlloc((void **)&h_A, nBytes, flags));
+    CHECK(cudaHostAlloc((void **)&h_B, nBytes, flags));
+
+    initialData(h_A, nElem);
+    initialData(h_B, nElem);
+    memset(hostRef, 0, nBytes);
+    memset(gpuRef, 0, nBytes);
+
+    CHECK(cudaHostGetDevicePointer((void **)&d_A, (void *)h_A, 0));
+    CHECK(cudaHostGetDevicePointer((void **)&d_B, (void *)h_B, 0));
+
+    sumArraysOnHost(h_A, h_B, hostRef, nElem);
+
+    sumArraysZeroCopy<<<grid, block>>>(d_A, d_B, d_C, nElem);
+    CHECK(cudaDeviceSynchronize());
+
+    CHECK(cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost));
+
+    checkResult(hostRef, gpuRef, nElem);
+
+    CHECK(cudaFree(d_C));
+    CHECK(cudaFreeHost(h_A));
+    CHECK(cudaFreeHost(h_B));
     free(hostRef);
     free(gpuRef);
 
-    return (0);
+    CHECK(cudaDeviceReset());
+
+    return EXIT_SUCCESS;
 }

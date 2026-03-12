@@ -1,9 +1,9 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
-#include <sys/time.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
 #include <math.h>
-#include <time.h>
 
 #define CHECK(call)                                                \
     {                                                              \
@@ -34,20 +34,32 @@ void initialData(float *ip, int size)
     }
 }
 
-void sumArraysOnHost(float *A, float *B, float *C, const int N)
+void sumMatrixOnHost(float *A, float *B, float *C, const int nx, const int ny)
 {
-    for (int idx = 0; idx < N; idx++)
+    float *ia = A;
+    float *ib = B;
+    float *ic = C;
+    for (int iy = 0; iy < ny; iy++)
     {
-        C[idx] = A[idx] + B[idx];
+        for (int ix = 0; ix < nx; ix++)
+        {
+            ic[ix] = ia[ix] + ib[ix];
+        }
+        ia += nx;
+        ib += nx;
+        ic += nx;
     }
 }
 
-__global__ void sumArraysOnGPU(float *A, float *B, float *C, const int N)
+__global__ void sumMatrixOnGPU2D(float *MatA, float *MatB, float *MatC, int nx, int ny)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < N)
+    unsigned int ix = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int iy = threadIdx.y + blockIdx.y * blockDim.y;
+    unsigned int idx = iy * nx + ix;
+
+    if (ix < nx && iy < ny)
     {
-        C[i] = A[i] + B[i];
+        MatC[idx] = MatA[idx] + MatB[idx];
     }
 }
 
@@ -57,7 +69,7 @@ void checkResult(float *hostRef, float *gpuRef, const int N)
     bool match = 1;
     for (int i = 0; i < N; i++)
     {
-        if (abs(hostRef[i] - gpuRef[i]) > epsilon)
+        if (fabs(hostRef[i] - gpuRef[i]) > epsilon)
         {
             match = 0;
             printf("Arrays do not match!\n");
@@ -79,60 +91,64 @@ int main(int argc, char **argv)
     printf("Using Device %d: %s\n", dev, deviceProp.name);
     CHECK(cudaSetDevice(dev));
 
-    int nElem = 1 << 24;
-    printf("Vector size %d\n", nElem);
+    int nx = 1 << 14;
+    int ny = 1 << 14;
+    int nxy = nx * ny;
+    int nBytes = nxy * sizeof(float);
+    printf("Matrix size: nx %d ny %d\n", nx, ny);
 
-    size_t nBytes = nElem * sizeof(float);
     float *h_A, *h_B, *hostRef, *gpuRef;
     h_A = (float *)malloc(nBytes);
     h_B = (float *)malloc(nBytes);
     hostRef = (float *)malloc(nBytes);
     gpuRef = (float *)malloc(nBytes);
 
-    double iStart, iElaps;
-
-    iStart = cpuSecond();
-    initialData(h_A, nElem);
-    initialData(h_B, nElem);
-    iElaps = cpuSecond() - iStart;
+    double iStart = cpuSecond();
+    initialData(h_A, nxy);
+    initialData(h_B, nxy);
+    double iElaps = cpuSecond() - iStart;
 
     memset(hostRef, 0, nBytes);
     memset(gpuRef, 0, nBytes);
 
     iStart = cpuSecond();
-    sumArraysOnHost(h_A, h_B, hostRef, nElem);
+    sumMatrixOnHost(h_A, h_B, hostRef, nx, ny);
     iElaps = cpuSecond() - iStart;
 
-    float *d_A, *d_B, *d_C;
-    cudaMalloc((float **)&d_A, nBytes);
-    cudaMalloc((float **)&d_B, nBytes);
-    cudaMalloc((float **)&d_C, nBytes);
+    float *d_MatA, *d_MatB, *d_MatC;
+    cudaMalloc((void **)&d_MatA, nBytes);
+    cudaMalloc((void **)&d_MatB, nBytes);
+    cudaMalloc((void **)&d_MatC, nBytes);
 
-    cudaMemcpy(d_A, h_A, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, nBytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_MatA, h_A, nBytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_MatB, h_B, nBytes, cudaMemcpyHostToDevice);
 
-    int iLen = 1024;
-    dim3 block(iLen);
-    dim3 grid((nElem + block.x - 1) / block.x);
+    int dimx = 32;
+    int dimy = 16;
+    dim3 block(dimx, dimy);
+    dim3 grid((nx + block.x - 1) / block.x, (ny + block.y - 1) / block.y);
 
     iStart = cpuSecond();
-    sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
+    sumMatrixOnGPU2D<<<grid, block>>>(d_MatA, d_MatB, d_MatC, nx, ny);
     cudaDeviceSynchronize();
     iElaps = cpuSecond() - iStart;
-    printf("sumArraysOnGPU <<<%d,%d>>> Time elapsed %fsec\n", grid.x, block.x, iElaps);
 
-    cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost);
+    printf("sumMatrixOnGPU2D <<<(%d,%d), (%d,%d)>>> elapsed %f sec\n",
+           grid.x, grid.y, block.x, block.y, iElaps);
 
-    checkResult(hostRef, gpuRef, nElem);
+    cudaMemcpy(gpuRef, d_MatC, nBytes, cudaMemcpyDeviceToHost);
 
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+    checkResult(hostRef, gpuRef, nxy);
+
+    cudaFree(d_MatA);
+    cudaFree(d_MatB);
+    cudaFree(d_MatC);
 
     free(h_A);
     free(h_B);
     free(hostRef);
     free(gpuRef);
 
+    cudaDeviceReset();
     return (0);
 }
