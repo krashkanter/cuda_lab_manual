@@ -1,48 +1,29 @@
-#include <cuda_runtime.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/time.h>
-#include <math.h>
+#include <cmath>
 
-#define CHECK(call)                                                \
-    {                                                              \
-        const cudaError_t error = call;                            \
-        if (error != cudaSuccess)                                  \
-        {                                                          \
-            fprintf(stderr, "Error: %s:%d, ", __FILE__, __LINE__); \
-            fprintf(stderr, "code: %d, reason: %s\n", error,       \
-                    cudaGetErrorString(error));                    \
-            exit(1);                                               \
-        }                                                          \
-    }
-
-inline double cpuSecond()
-{
+inline double cpuSecond() {
     struct timeval tp;
     gettimeofday(&tp, NULL);
     return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
 }
 
-void initialData(float *ip, int size)
-{
+void initialData(float *ip, int size) {
     time_t t;
     srand((unsigned)time(&t));
-    for (int i = 0; i < size; i++)
-    {
+    for (int i = 0; i < size; i++) {
         ip[i] = (float)(rand() & 0xFF) / 10.0f;
     }
 }
 
-void sumMatrixOnHost(float *A, float *B, float *C, const int nx, const int ny)
-{
+void sumMatrixOnHost(float *A, float *B, float *C, const int nx, const int ny) {
     float *ia = A;
     float *ib = B;
     float *ic = C;
-    for (int iy = 0; iy < ny; iy++)
-    {
-        for (int ix = 0; ix < nx; ix++)
-        {
+    for (int iy = 0; iy < ny; iy++) {
+        for (int ix = 0; ix < nx; ix++) {
             ic[ix] = ia[ix] + ib[ix];
         }
         ia += nx;
@@ -51,26 +32,21 @@ void sumMatrixOnHost(float *A, float *B, float *C, const int nx, const int ny)
     }
 }
 
-__global__ void sumMatrixOnGPU2D(float *MatA, float *MatB, float *MatC, int nx, int ny)
-{
+__global__ void sumMatrixOnGPU2D(float *MatA, float *MatB, float *MatC, int nx, int ny) {
     unsigned int ix = threadIdx.x + blockIdx.x * blockDim.x;
     unsigned int iy = threadIdx.y + blockIdx.y * blockDim.y;
     unsigned int idx = iy * nx + ix;
 
-    if (ix < nx && iy < ny)
-    {
+    if (ix < nx && iy < ny) {
         MatC[idx] = MatA[idx] + MatB[idx];
     }
 }
 
-void checkResult(float *hostRef, float *gpuRef, const int N)
-{
+void checkResult(float *hostRef, float *gpuRef, const int N) {
     double epsilon = 1.0E-8;
     bool match = 1;
-    for (int i = 0; i < N; i++)
-    {
-        if (fabs(hostRef[i] - gpuRef[i]) > epsilon)
-        {
+    for (int i = 0; i < N; i++) {
+        if (fabs(hostRef[i] - gpuRef[i]) > epsilon) {
             match = 0;
             printf("Arrays do not match!\n");
             printf("host %5.2f gpu %5.2f at current %d\n", hostRef[i], gpuRef[i], i);
@@ -81,21 +57,12 @@ void checkResult(float *hostRef, float *gpuRef, const int N)
         printf("Arrays match.\n\n");
 }
 
-int main(int argc, char **argv)
-{
-    printf("%s Starting...\n", argv[0]);
-
-    int dev = 0;
-    cudaDeviceProp deviceProp;
-    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
-    printf("Using Device %d: %s\n", dev, deviceProp.name);
-    CHECK(cudaSetDevice(dev));
-
+int main() {
     int nx = 1 << 14;
     int ny = 1 << 14;
     int nxy = nx * ny;
     int nBytes = nxy * sizeof(float);
-    printf("Matrix size: nx %d ny %d\n", nx, ny);
+    printf("Matrix: %d x %d\n", nx, ny);
 
     float *h_A, *h_B, *hostRef, *gpuRef;
     h_A = (float *)malloc(nBytes);
@@ -114,6 +81,8 @@ int main(int argc, char **argv)
     iStart = cpuSecond();
     sumMatrixOnHost(h_A, h_B, hostRef, nx, ny);
     iElaps = cpuSecond() - iStart;
+
+    printf("sumMatrixOnHost elapsed %f sec\n", iElaps);
 
     float *d_MatA, *d_MatB, *d_MatC;
     cudaMalloc((void **)&d_MatA, nBytes);

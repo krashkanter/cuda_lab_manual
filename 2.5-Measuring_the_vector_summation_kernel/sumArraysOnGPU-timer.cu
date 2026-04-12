@@ -1,21 +1,9 @@
-#include <cuda_runtime.h>
-#include <stdio.h>
+#include <cstdio>
 #include <sys/time.h>
-#include <stdlib.h>
-#include <math.h>
-#include <time.h>
+#include <cstdlib>
+#include <cmath>
+#include <ctime>
 
-#define CHECK(call)                                                \
-    {                                                              \
-        const cudaError_t error = call;                            \
-        if (error != cudaSuccess)                                  \
-        {                                                          \
-            fprintf(stderr, "Error: %s:%d, ", __FILE__, __LINE__); \
-            fprintf(stderr, "code: %d, reason: %s\n", error,       \
-                    cudaGetErrorString(error));                    \
-            exit(1);                                               \
-        }                                                          \
-    }
 
 inline double cpuSecond()
 {
@@ -75,9 +63,9 @@ int main(int argc, char **argv)
 
     int dev = 0;
     cudaDeviceProp deviceProp;
-    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
+    cudaGetDeviceProperties(&deviceProp, dev);
     printf("Using Device %d: %s\n", dev, deviceProp.name);
-    CHECK(cudaSetDevice(dev));
+    cudaSetDevice(dev);
 
     int nElem = 1 << 24;
     printf("Vector size %d\n", nElem);

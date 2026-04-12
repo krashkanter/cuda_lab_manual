@@ -30,24 +30,33 @@ void sumArraysOnHost(float *A, float *B, float *C, const int N) {
 }
 
 // This function is used to populate an array with random numbers.
+// *ip is the pointer to the array, and size is number of elements in that array. Size is essential to prevent overflow or not filling up whole array
 void initialData(float *ip, int size) {
+    // This initializes rand() function with a seed, change the seed to time(NULL) to use current time as seed which makes it whole lot more randomized on executions
     srand(11);
     for (int i = 0; i < size; i++)
     {
+        // First rand() generates an integer which is clipped to 8bits by bitwise AND, resulting in integer between 0 - 255, this is then converted into float. This is again scaled down by the factor of 10. Example: some random number -> (after bitwise AND) 255 -> 255.00 -> 25.50
         ip[i] = (float)(rand() & 0xFF) / 10.0f;
     }
 }
 
 // Main Function
 int main() {
+    // Number of elements in the array
     int nElem = 65536;
+    // Calculating the size of that array if the data type of the array is float
     size_t nBytes = nElem * sizeof(float);
 
+    // Initializing the array variables
     float *h_A = (float *)malloc(nBytes);
     float *h_B = (float *)malloc(nBytes);
     float *h_C = (float *)malloc(nBytes);
+
+    // We'll use this variable to store the result fetched from GPU to host
     float *h_D = (float *)malloc(nBytes);
 
+    // Declare variables for cudaMalloc
     float *d_A, *d_B, *d_C;
 
     cudaMalloc((float **)&d_A, nBytes);
@@ -57,6 +66,7 @@ int main() {
     initialData(h_A, nElem);
     initialData(h_B, nElem);
 
+    // Array that has been populated with the randomly generated floats is copied over to GPU
     cudaMemcpy(d_A, h_A, nBytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, nBytes, cudaMemcpyHostToDevice);
 
@@ -66,25 +76,14 @@ int main() {
     double cpuEnd = cpuTimer();
     printf("CPU finished Sum Array Operation  |  Time: %.3f ms\n", cpuEnd - cpuStart);
 
-    // GPU Timer using CUDA Events
-    cudaEvent_t gpuStart, gpuEnd;
-    cudaEventCreate(&gpuStart);
-    cudaEventCreate(&gpuEnd);
 
-    cudaEventRecord(gpuStart);
+    // These values multiplied are threads, which must be equal to or greater than nElem to get correct answer
+    // Block size should preferably be the multiple of 32 (128, 256, or 512). You'll learn about this warp size (32) in subsequent programs
+    double gpuStart = cpuTimer();
     sumArraysOnGPU<<<512, 128>>>(d_A, d_B, d_C, nElem);
-    cudaEventRecord(gpuEnd);
+    double timeTaken = cpuTimer() - gpuStart;
 
-    // Blocks CPU until the GPU event is recorded
-    cudaEventSynchronize(gpuEnd);
-
-    float gpuMs = 0.0f;
-    cudaEventElapsedTime(&gpuMs, gpuStart, gpuEnd);
-    printf("GPU finished Sum Array Operation  |  Time: %.3f ms\n", gpuMs);
-
-    // Cleanup events
-    cudaEventDestroy(gpuStart);
-    cudaEventDestroy(gpuEnd);
+    printf("GPU finished Sum Array Operation (CPU Timer)  |  Time: %.3f ms\n", timeTaken);
 
     // Copy back the results from the GPU to host
     cudaMemcpy(h_D, d_C, nBytes, cudaMemcpyDeviceToHost);

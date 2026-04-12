@@ -5,18 +5,6 @@
 #include <math.h>
 #include <sys/time.h>
 
-#define CHECK(call)                                                \
-    {                                                              \
-        const cudaError_t error = call;                            \
-        if (error != cudaSuccess)                                  \
-        {                                                          \
-            fprintf(stderr, "Error: %s:%d, ", __FILE__, __LINE__); \
-            fprintf(stderr, "code: %d, reason: %s\n", error,       \
-                    cudaGetErrorString(error));                    \
-            exit(1);                                               \
-        }                                                          \
-    }
-
 inline double seconds()
 {
     struct timeval tp;
@@ -97,9 +85,9 @@ int main(int argc, char **argv)
 {
     int dev = 0;
     cudaDeviceProp deviceProp;
-    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
+    cudaGetDeviceProperties(&deviceProp, dev);
     printf("%s starting transpose at device %d: %s \n", argv[0], dev, deviceProp.name);
-    CHECK(cudaSetDevice(dev));
+    cudaSetDevice(dev);
 
     int nx = 1 << 11;
     int ny = 1 << 11;
@@ -134,14 +122,14 @@ int main(int argc, char **argv)
     transposeHost(hostRef, h_A, nx, ny);
 
     float *d_A, *d_C;
-    CHECK(cudaMalloc((float **)&d_A, nBytes));
-    CHECK(cudaMalloc((float **)&d_C, nBytes));
+    cudaMalloc((float **)&d_A, nBytes));
+    cudaMalloc((float **)&d_C, nBytes));
 
-    CHECK(cudaMemcpy(d_A, h_A, nBytes, cudaMemcpyHostToDevice));
+    cudaMemcpy(d_A, h_A, nBytes, cudaMemcpyHostToDevice);
 
     double iStart = seconds();
     warmup<<<grid, block>>>(d_C, d_A, nx, ny);
-    CHECK(cudaDeviceSynchronize());
+    cudaDeviceSynchronize();
     double iElaps = seconds() - iStart;
     printf("warmup elapsed %f sec\n", iElaps);
 
@@ -162,7 +150,7 @@ int main(int argc, char **argv)
 
     iStart = seconds();
     kernel<<<grid, block>>>(d_C, d_A, nx, ny);
-    CHECK(cudaDeviceSynchronize());
+    cudaDeviceSynchronize();
     iElaps = seconds() - iStart;
 
     float ibnd = 2 * nx * ny * sizeof(float) / 1e9 / iElaps;
@@ -171,17 +159,17 @@ int main(int argc, char **argv)
 
     if (iKernel > 1)
     {
-        CHECK(cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost));
+        cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost);
         checkResult(hostRef, gpuRef, nx * ny, 1);
     }
 
-    CHECK(cudaFree(d_A));
-    CHECK(cudaFree(d_C));
+    cudaFree(d_A);
+    cudaFree(d_C);
     free(h_A);
     free(hostRef);
     free(gpuRef);
 
-    CHECK(cudaDeviceReset());
+    cudaDeviceReset();
 
     return EXIT_SUCCESS;
 }

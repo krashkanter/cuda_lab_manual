@@ -1,33 +1,26 @@
-#include <cuda_runtime.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
 
-int main(int argc, char **argv)
-{
-    printf("%s Starting...\n", argv[0]);
+int main() {
     int deviceCount = 0;
     cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
 
-    if (error_id != cudaSuccess)
-    {
+    if (error_id != cudaSuccess) {
         printf("cudaGetDeviceCount returned %d\n-> %s\n",
                (int)error_id, cudaGetErrorString(error_id));
         printf("Result = FAIL\n");
         exit(EXIT_FAILURE);
     }
 
-    if (deviceCount == 0)
-    {
+    if (deviceCount == 0) {
         printf("There are no available device(s) that support CUDA\n");
-    }
-    else
-    {
+    } else {
         printf("Detected %d CUDA Capable device(s)\n", deviceCount);
     }
 
-    int dev, driverVersion = 0, runtimeVersion = 0;
-    dev = 0;
+    int dev = 0, driverVersion = 0, runtimeVersion = 0;
+
     cudaSetDevice(dev);
     cudaDeviceProp deviceProp;
     cudaGetDeviceProperties(&deviceProp, dev);
@@ -52,8 +45,7 @@ int main(int argc, char **argv)
     printf(" Memory Bus Width:                              %d-bit\n",
            deviceProp.memoryBusWidth);
 
-    if (deviceProp.l2CacheSize)
-    {
+    if (deviceProp.l2CacheSize) {
         printf(" L2 Cache Size:                                 %d bytes\n",
                deviceProp.l2CacheSize);
     }

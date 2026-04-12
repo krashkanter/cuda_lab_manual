@@ -1,15 +1,4 @@
-#include <cuda_runtime.h>
-#include <stdio.h>
-#define CHECK(call)                                                            \
-    {                                                                          \
-        const cudaError_t error = call;                                        \
-        if (error != cudaSuccess)                                              \
-        {                                                                      \
-            printf("Error: %s:%d, ", __FILE__, __LINE__);                      \
-            printf("code:%d, reason: %s\n", error, cudaGetErrorString(error)); \
-            exit(1);                                                           \
-        }                                                                      \
-    }
+#include <cstdio>
 
 void checkResult(float *hostRef, float *gpuRef, const int N)
 {
@@ -56,7 +45,7 @@ int main(int argc, char **argv)
 {
     printf("%s Starting...\n", argv[0]);
 
-    // set up device
+    // set up device (if multiple GPUs there, this option is specified to choose one of them)
     int dev = 0;
     cudaSetDevice(dev);
 
@@ -113,5 +102,6 @@ int main(int argc, char **argv)
     free(h_B);
     free(hostRef);
     free(gpuRef);
+
     return (0);
 }
