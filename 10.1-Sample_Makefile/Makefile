@@ -2,14 +2,14 @@ SRCS := $(wildcard *.c)
 OBJS := $(patsubst %.c, %.o, $(SRCS))
 CUDA_SRCS := $(wildcard *.cu)
 CUDA_OBJS := $(patsubst %.cu, %.o, $(CUDA_SRCS))
-CUDA_PATH := /usr/local/cuda
-NVCC := $(CUDA_PATH)/bin/nvcc
+CUDA_PATH := /usr/lib/nvidia-cuda-toolkit
+NVCC := /usr/bin/nvcc
 CC := gcc
 LD := gcc -fopenmp
-CUDA_LIB := -L$(CUDA_PATH)/lib64 -lcublas -lcufft -lcudart
+CUDA_LIB := -L$(CUDA_PATH)/lib/x86_64-linux-gnu -lcublas -lcufft -lcudart
 CUDA_INC += -I$(CUDA_PATH)/include
 CFLAGS += -std=c99
-INCLUDES := 
+INCLUDES :=
 GPU_CARD := -arch=sm_89
 NVCC_FLAGS += -O3 -dc
 NVCC_FLAGS += -Xcompiler -fopenmp

@@ -1,28 +1,23 @@
-#include <cuda_runtime.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/time.h>
 
-inline double seconds()
-{
+inline double seconds() {
     struct timeval tp;
     gettimeofday(&tp, NULL);
     return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
 }
 
-int recursiveReduce(int *data, int const size)
-{
+int recursiveReduce(int *data, int const size) {
     int sum = 0;
-    for (int i = 0; i < size; i++)
-    {
+    for (int i = 0; i < size; i++) {
         sum += data[i];
     }
     return sum;
 }
 
-__global__ void warmup(int *g_idata, int *g_odata, unsigned int n)
-{
+__global__ void warmup(int *g_idata, int *g_odata, unsigned int n) {
     unsigned int tid = threadIdx.x;
     unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int *idata = g_idata + blockIdx.x * blockDim.x;
@@ -30,10 +25,8 @@ __global__ void warmup(int *g_idata, int *g_odata, unsigned int n)
     if (idx >= n)
         return;
 
-    for (int stride = 1; stride < blockDim.x; stride *= 2)
-    {
-        if ((tid % (2 * stride)) == 0)
-        {
+    for (int stride = 1; stride < blockDim.x; stride *= 2) {
+        if ((tid % (2 * stride)) == 0) {
             idata[tid] += idata[tid + stride];
         }
         __syncthreads();
@@ -43,8 +36,7 @@ __global__ void warmup(int *g_idata, int *g_odata, unsigned int n)
         g_odata[blockIdx.x] = idata[0];
 }
 
-__global__ void reduceNeighbored(int *g_idata, int *g_odata, unsigned int n)
-{
+__global__ void reduceNeighbored(int *g_idata, int *g_odata, unsigned int n) {
     unsigned int tid = threadIdx.x;
     unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int *idata = g_idata + blockIdx.x * blockDim.x;
@@ -52,10 +44,8 @@ __global__ void reduceNeighbored(int *g_idata, int *g_odata, unsigned int n)
     if (idx >= n)
         return;
 
-    for (int stride = 1; stride < blockDim.x; stride *= 2)
-    {
-        if ((tid % (2 * stride)) == 0)
-        {
+    for (int stride = 1; stride < blockDim.x; stride *= 2) {
+        if ((tid % (2 * stride)) == 0) {
             idata[tid] += idata[tid + stride];
         }
         __syncthreads();
@@ -65,14 +55,12 @@ __global__ void reduceNeighbored(int *g_idata, int *g_odata, unsigned int n)
         g_odata[blockIdx.x] = idata[0];
 }
 
-__global__ void reduceUnroll8(int *g_idata, int *g_odata, unsigned int n)
-{
+__global__ void reduceUnroll8(int *g_idata, int *g_odata, unsigned int n) {
     unsigned int tid = threadIdx.x;
     unsigned int idx = blockIdx.x * blockDim.x * 8 + threadIdx.x;
     int *idata = g_idata + blockIdx.x * blockDim.x * 8;
 
-    if (idx + 7 * blockDim.x < n)
-    {
+    if (idx + 7 * blockDim.x < n) {
         int a1 = g_idata[idx];
         int a2 = g_idata[idx + blockDim.x];
         int a3 = g_idata[idx + 2 * blockDim.x];
@@ -85,10 +73,8 @@ __global__ void reduceUnroll8(int *g_idata, int *g_odata, unsigned int n)
     }
     __syncthreads();
 
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1)
-    {
-        if (tid < stride)
-        {
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
             idata[tid] += idata[tid + stride];
         }
         __syncthreads();
@@ -111,8 +97,7 @@ int main(int argc, char **argv)
     printf("with array size %d \n", size);
 
     int blocksize = 512;
-    if (argc > 1)
-    {
+    if (argc > 1){
         blocksize = atoi(argv[1]);
     }
 

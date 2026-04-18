@@ -1,8 +1,7 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <cuda_runtime.h>
+#include <cstdio>
+#include <cstdlib>
 
-int main(int argc, char *argv[])
+int main()
 {
     int iDev = 0;
     cudaDeviceProp iProp;
